@@ -174,14 +174,190 @@ _rustc_codegen_options() {
     opts=( ${(M)opts:#' '#'-C'' '##*'--'*} )
     # Escape `[` and `]`.
     opts=( ${${opts//'['/'\['}//']'/'\]'} )
+
     # Extract option and description.
-    opts=( ${opts/(#b)' '#'-C'' '##([a-z-]##)'=val'' '##'--'' '##(*)' '#/"${match[1]}[${match[2]}]::val"} )
+    local -A opts_map
+    opts_map=( ${(z)opts/(#b)' '#'-C'' '##([a-z-]##)'=val'' '##'--'' '##(*)' '#/"${(q)match[1]} ${(q)match[2]}"} )
+
+    # Excluded options.
+    local -a exclude
+    exclude=(
+        'ar'
+        'no-stack-check'
+    )
+
+    # Custom value functions for options.
+    local -A val_map
+    val_map=(
+        'code-model'                '_rustc_code_models'
+        'control-flow-guard'        '(yes no)'
+        'debug-assertions'          '(yes no)'
+        'debuginfo'                 '_rustc_debuginfo_levels'
+        'default-linker-libraries'  '(yes no)'
+        'embed-bitcode'             '(yes no)'
+        'force-frame-pointer'       '(yes no)'
+        'incremental'               '(yes no)'
+        'link-dead-code'            '(yes no)'
+        'link-self-contained'       '(yes no)'
+        'linker-flavor'             '_rustc_linker_flavors'
+        'lto'                       '_rustc_lto_levels'
+        'no-prepopulate-passes'     '(yes no)'
+        'no-redzone'                '(yes no)'
+        'no-vectorize-loops'        '(yes no)'
+        'no-vectorize-slp'          '(yes no)'
+        'opt-level'                 '_rustc_opt_levels'
+        'overflow-checks'           '(yes no)'
+        'panic'                     '_rustc_panic_types'
+        'prefer-dynamic'            '(yes no)'
+        'relocation-model'          '_rustc_relocation_models'
+        'rpath'                     '(yes no)'
+        'save-temps'                '(yes no)'
+        'soft-float'                '(yes no)'
+        'target-cpu'                '_rustc_target_cpus'
+        'target-feature'            '_rustc_target_features'
+    )
+
+    opts=()
+    local opt desc val
+    for opt desc in ${(kv)opts_map}; do
+        if [[ "${exclude[(r)$opt]}" == "$opt" ]]; then
+            continue
+        fi
+
+        val="${val_map[$opt]}"
+        opts+=( "${opt}[${desc}]::val:$val" )
+    done
+
     # Add help.
     opts+=( help )
 
     # TODO: Add custom completions for known options.
 
     _values 'codegen option' $opts
+}
+
+_rustc_code_models() {
+    local -a models
+    models=( ${(f)"$(_call_program models rustc --print code-models)"} )
+
+    # Filter out first line.
+    models=( ${models[@]:1} )
+    # Extract models.
+    models=( ${models/(#b)' '#([a-z-]##)' '#/${match[1]}} )
+
+    _values 'code model' $models
+}
+
+_rustc_relocation_models() {
+    local -a models
+    models=( ${(f)"$(_call_program models rustc --print relocation-models)"} )
+
+    # Filter out first line.
+    models=( ${models[@]:1} )
+    # Extract models.
+    models=( ${models/(#b)' '#([a-z-]##)' '#/${match[1]}} )
+
+    _values 'relocation model' $models
+}
+
+_rustc_target_cpus() {
+    local -a cpus
+    cpus=( ${(f)"$(_call_program cpus rustc --print target-cpus)"} )
+
+    # Filter out first line.
+    cpus=( ${cpus[@]:1} )
+    # Extract cpus.
+    cpus=( ${cpus/(#b)' '#([a-z-]##)' '#*/${match[1]}} )
+
+    _values 'target cpu' $cpus
+}
+
+_rustc_target_features() {
+    local -a features
+    features=( ${(f)"$(_call_program features rustc --print target-features)"} )
+
+    # Filter out non feature lines.
+    features=( ${(M)features:#' '#[a-z-]##' '##'-'' '##*' '#} )
+    # Extract features.
+    features=( ${features/(#b)' '#([a-z-]##)' '##'-'' '##*' '#/${match[1]}} )
+
+    local -a features2
+    local feature
+    for feature in $features; do
+        features2+=( "(-${feature})+${feature}" "(+${feature})-${feature}" )
+    done
+
+    _values -s ',' 'target feature' $features2
+}
+
+_rustc_debuginfo_levels() {
+    local -a levels
+    levels=(
+        '0[no debug info (default)]'
+        '1[line tables only]'
+        '2[full debug info with variable and type information]'
+    )
+
+    _values 'debuginfo level' $levels
+}
+
+_rustc_linker_flavors() {
+    local -a flavors
+    flavors=(
+        'em[use Emscripten `emcc`]'
+        'gcc[use the `cc` executable, typically `gcc` or `clang`]'
+        'ld[use the `ld` executable]'
+        'msvc[use the `link.exe` executable from Microsoft Visual Studio MSVC]'
+        'ptx-linker[use `rust-ptx-linker` for Nvidia NVPTX GPGPU support]'
+        'wasm-ld[use the `wasm-ld` executable, a port of LLVM `lld` for WebAssembly]'
+        'ld64.lld[use the LLVM `lld` executable with the `-flavor darwin` for Apple'"'"'s `ld`]'
+        'ld.lld[use the LLVM `lld` executable with the `-flavor gnu` for GNU binutils'"'"' `ld`]'
+        'lld-link[use the LLVM `lld` executable with the `-flavor link` for Microsoft'"'"'s `link.exe`]'
+
+    )
+
+    _values 'linker flavor' $flavors
+}
+
+_rustc_lto_levels() {
+    local yes no thin
+    yes='perform "fat" LTO'
+    no='disables LTO'
+    thin='perform "thin" LTO'
+
+    local -a levels
+    levels=(
+        "yes[$yes]"
+        "fat[$yes]"
+        "no[$no]"
+        "thin[$thin]"
+    )
+
+    _values 'lto level' $levels
+}
+
+_rustc_opt_levels() {
+    local -a levels
+    levels=(
+        '0[no optimizations, also turns on `cfg(debug_assertions)` (default)]'
+        '1[basic optimizations]'
+        '2[some optimizations]'
+        '3[all optimizations]'
+        's[optimize for binary size]'
+        'z[optimize for binary size, but also turn off loop vectorization]'
+    )
+
+    _values 'opt level' $levels
+}
+
+_rustc_panic_types() {
+    local -a panics
+    panics=(
+        'abort[terminate the process upon panic]'
+        'unwind[unwind the stack upon panic]'
+    )
+
+    _values 'panic strategy' $panics
 }
 
 _rustc
