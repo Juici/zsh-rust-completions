@@ -360,5 +360,5 @@ _rustc_panic_types() {
     _values 'panic strategy' $panics
 }
 
-_rustc
+_rustc "$@"
 
