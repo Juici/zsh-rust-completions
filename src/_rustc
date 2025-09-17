@@ -1,6 +1,9 @@
 #compdef rustc
 
 _rustc() {
+    local curcontext="$curcontext" ret=1
+    local -a match mbegin mend
+    local -a state line state_descr # These are set by _arguments
     local -a opt_flags opt_vals lints
     typeset -A opt_args
 
@@ -116,7 +119,7 @@ _rustc_emit_types() {
 
 _rustc_print_info() {
     local -a print_types
-    print_types=( ${(z)${(f)"$(_call_program print_types rustc --help)"/(#b)*'--print ['([a-z-|]##)']'*/${match[1]}}//|/ } )
+    print_types=( ${(s.|.)"$(rustc --help -v)"/(#b)*'--print '[^-]##'INFO may be one of'[[:space:]]##'<'([^>]#)'>'*/${match[1]}} )
 
     _values 'print type' $print_types
 }
